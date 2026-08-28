@@ -33,7 +33,7 @@ class ChatController extends AbstractController
         $message = new Message();
         $message->setAuthor($author);
         $message->setContent($content);
-        $message->setCreatedAt(new \DateTimeImmutable());
+        $message->setCreatedAt(new \DateTimeImmutable('now', new \DateTimeZone('Europe/Warsaw')));
 
         $em->persist($message);
         $em->flush();

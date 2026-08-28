@@ -22,15 +22,34 @@
             const form = document.getElementById('chat-form');
             const authorInput = document.getElementById('author');
             const contentInput = document.getElementById('content');
+            
+            const displayedIds = new Set();
 
             const eventSource = new EventSource('/stream');
             eventSource.onmessage = function(event)
             {
                 const data = JSON.parse(event.data);
+                
+                if(displayedIds.has(data.id))
+                    return;
+                displayedIds.add(data.id);
 
                 const msgElement = document.createElement('div');
                 msgElement.style.marginBottom = '10px';
-                msgElement.innerHTML = `<span style="color: #888;">[${data.time}]</span> <strong>${data.author}:</strong> ${data.content}`;
+
+                //XSS
+                const timeSpan = document.createElement('span');
+                timeSpan.style.color = '#888';
+                timeSpan.textContent = `[${data.time}]`;
+
+                const authorStrong = document.createElement('strong');
+                authorStrong.textContent = ` ${data.author}: `;
+
+                const contentText = document.createTextNode(data.content);
+
+                msgElement.appendChild(timeSpan);
+                msgElement.appendChild(authorStrong);
+                msgElement.appendChild(contentText);
 
                 messagesDiv.appendChild(msgElement);
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
