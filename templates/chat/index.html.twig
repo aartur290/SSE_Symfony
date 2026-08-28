@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>SSE Symfony Chat</title>
+    </head>
+    <body style="font-family: sans-serif; padding: 20px;">
+        <h1>Chat (Symfony + SSE)</h1>
+        
+        <div id="messages" style="border: 1px solid #ccc; height: 350px; overflow-y: scroll; padding: 15px; background: #f9f9f9;">
+            <!-- messages -->
+        </div>
+
+        <form id="chat-form" style="margin-top: 15px; display: flex; gap: 10px;">
+            <input type="text" id="author" placeholder="Your name" required style="padding: 8px; width: 150px;">
+            <input type="text" id="content" placeholder="Enter the message" required style="padding: 8px; flex-grow: 1;" autocomplete="off">
+            <button type="submit" style="padding: 8px 15px;">Send!</button>
+        </form>
+
+        <script>
+            const messagesDiv = document.getElementById('messages');
+            const form = document.getElementById('chat-form');
+            const authorInput = document.getElementById('author');
+            const contentInput = document.getElementById('content');
+
+            const eventSource = new EventSource('/stream');
+            eventSource.onmessage = function(event)
+            {
+                const data = JSON.parse(event.data);
+
+                const msgElement = document.createElement('div');
+                msgElement.style.marginBottom = '10px';
+                msgElement.innerHTML = `<span style="color: #888;">[${data.time}]</span> <strong>${data.author}:</strong> ${data.content}`;
+
+                messagesDiv.appendChild(msgElement);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            };
+
+            form.addEventListener('submit', function(e)
+            {
+                e.preventDefault();
+
+                const formData = new FormData();
+                formData.append('author', authorInput.value);
+                formData.append('content', contentInput.value);
+
+                fetch('/send',
+                {
+                    method: 'POST',
+                    body: formData
+                });
+
+                contentInput.value = '';
+            });
+        </script>
+    </body>
+</html>
