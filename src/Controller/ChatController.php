@@ -120,7 +120,7 @@ class ChatController extends AbstractController
     public function clear(EntityManagerInterface $em): JsonResponse
     {
         $connection = $em->getConnection();
-        $connection->executeStatement('TRUNCATE TABLE Message');
+        $connection->executeStatement('TRUNCATE TABLE Message RESTART IDENTITY CASCADE');
 
         return new JsonResponse(['status' => 'ok']);
     }
