@@ -91,4 +91,13 @@ class ChatController extends AbstractController
 
         return $response;
     }
+
+    #[Route('/clear', name: 'chat_clear', methods: ['DELETE'])]
+    public function clear(EntityManagerInterface $em): JsonResponse
+    {
+        $connection = $em->getConnection();
+        $connection->executeStatement('TRUNCATE TABLE Message');
+
+        return new JsonResponse(['status' => 'ok']);
+    }
 }

@@ -15,6 +15,14 @@
             <input type="text" id="author" placeholder="Your name" required style="padding: 8px; width: 150px;">
             <input type="text" id="content" placeholder="Enter the message" required style="padding: 8px; flex-grow: 1;" autocomplete="off">
             <button type="submit" style="padding: 8px 15px;">Send!</button>
+            <div style="display: flex; gap: 10px;">
+                <button id="clear-local" style="padding: 5px 10px; background-color: #6c757d; color: white; border: none; cursor: pointer;">
+                    Clear locally
+                </button>
+                <button id="clear-global" style="padding: 5px 10px; background-color: #dc3545; color: white; border: none; cursor: pointer;">
+                    Clear globally
+                </button>
+            </div>
         </form>
 
         <script>
@@ -24,12 +32,16 @@
             const contentInput = document.getElementById('content');
             
             const displayedIds = new Set();
+            let minVisibleId = 0;
 
             const eventSource = new EventSource('/stream');
             eventSource.onmessage = function(event)
             {
                 const data = JSON.parse(event.data);
                 
+                if(data.id <= minVisibleId)
+                    return;
+
                 if(displayedIds.has(data.id))
                     return;
                 displayedIds.add(data.id);
@@ -70,6 +82,31 @@
                 });
 
                 contentInput.value = '';
+            });
+
+            document.getElementById('clear-local').addEventListener('click', function() {
+                if(displayedIds.size > 0)
+                {
+                    minVisibleId = Math.max(...displayedIds);
+                }
+                messagesDiv.innerHTML = '';
+                displayedIds.clear();
+            });
+
+            document.getElementById('clear-global').addEventListener('click', function() {
+                if(confirm('Are you sure to TRUNCATE the table?'))
+                {
+                    fetch('/clear', {method: 'DELETE'})
+                        .then(response => response.json())
+                        .then(data => {
+                            if(data.status === 'ok')
+                            {
+                                messagesDiv.innerHTML = '';
+                                displayedIds.clear();
+                                minVisibleId = 0;
+                            }
+                        });
+                }
             });
         </script>
     </body>
