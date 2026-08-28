@@ -12,14 +12,17 @@
         </div>
 
         <form id="chat-form" style="margin-top: 15px; display: flex; gap: 10px;">
+            <button id="new-chat" type="button" style="padding: 5px 10px; background-color: #17a2b8; color: white; border: none; cursor: pointer;">
+                New chat!
+            </button>
             <input type="text" id="author" placeholder="Your name" required style="padding: 8px; width: 150px;">
             <input type="text" id="content" placeholder="Enter the message" required style="padding: 8px; flex-grow: 1;" autocomplete="off">
             <button type="submit" style="padding: 8px 15px;">Send!</button>
             <div style="display: flex; gap: 10px;">
-                <button id="clear-local" style="padding: 5px 10px; background-color: #6c757d; color: white; border: none; cursor: pointer;">
+                <button id="clear-local" type="button" style="padding: 5px 10px; background-color: #6c757d; color: white; border: none; cursor: pointer;">
                     Clear locally
                 </button>
-                <button id="clear-global" style="padding: 5px 10px; background-color: #dc3545; color: white; border: none; cursor: pointer;">
+                <button id="clear-global" type="button" style="padding: 5px 10px; background-color: #dc3545; color: white; border: none; cursor: pointer;">
                     Clear globally
                 </button>
             </div>
@@ -39,6 +42,14 @@
             {
                 const data = JSON.parse(event.data);
                 
+                if(data.action === 'clear')
+                {
+                    messagesDiv.innerHTML = '';
+                    displayedIds.clear();
+                    minVisibleId = 0;
+                    return;
+                }
+
                 if(data.id <= minVisibleId)
                     return;
 
@@ -80,8 +91,22 @@
                     method: 'POST',
                     body: formData
                 });
-
+                
+                authorInput.disabled = true;
                 contentInput.value = '';
+            });
+
+            document.getElementById('new-chat').addEventListener('click', function() {
+                
+                if(displayedIds.size >0)
+                    minVisibleId = Math.max(...displayedIds);
+                
+                authorInput.disabled = false;
+                authorInput.value = '';
+                authorInput.focus();
+
+                messagesDiv.innerHTML = '';
+                displayedIds.clear();
             });
 
             document.getElementById('clear-local').addEventListener('click', function() {

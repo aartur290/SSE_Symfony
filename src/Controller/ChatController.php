@@ -50,6 +50,30 @@ class ChatController extends AbstractController
 
             while(true)
             {
+                $maxId = $em->createQueryBuilder()
+                    ->select('MAX(m.id)')
+                    ->from(Message::class, 'm')
+                    ->getQuery()
+                    ->getSingleScalarResult();
+
+                if($maxId === null || (int)$maxId < $lastId)
+                {
+                    if($lastId > 0)
+                    {
+                        echo "data: " . json_encode(['action' => 'clear']) . "\n\n";
+                        if(ob_get_level() > 0 )
+                            ob_flush();
+                        flush();
+                        $lastId = 0;
+                    }
+
+                    $em->clear();
+                    if(connection_aborted())
+                        break;
+                    sleep(1);
+                    continue;
+                }
+                
                 $messages = $em->getRepository(Message::class)
                     ->createQueryBuilder('m')
                     ->where('m.id > :lastId')
