@@ -3,136 +3,169 @@
     <head>
         <meta charset="UTF-8">
         <title>SSE Symfony Chat</title>
+        <link rel="stylesheet" href="/style.css">
     </head>
-    <body style="font-family: sans-serif; padding: 20px;">
-        <h1>Chat (Symfony + SSE)</h1>
+
+    <body>
+        <div id="sidebar">
+            <button id="new-chat-btn">New Chat</button>
+            <div id="chat-list"></div>
+        </div>
         
-        <div id="messages" style="border: 1px solid #ccc; height: 350px; overflow-y: scroll; padding: 15px; background: #f9f9f9;">
-            <!-- messages -->
+        <div id="main-chat">
+            <h2 id="current-chat-title">Choose / Create chat</h2>
+            <div id="messages"></div>
+
+            <form action="" id="chat-form">
+                <input type="text" id="author" placeholder="Your name" required style="padding: 8px; width: 150px;">
+                <input type="text" id="content" placeholder="Enter the message" required style="padding: 8px; flex-grow: 1;" autocomplete="off">
+                <button type="submit" style="padding: 8px 15px;">Send!</button>
+            </form>
         </div>
 
-        <form id="chat-form" style="margin-top: 15px; display: flex; gap: 10px;">
-            <button id="new-chat" type="button" style="padding: 5px 10px; background-color: #17a2b8; color: white; border: none; cursor: pointer;">
-                New chat!
-            </button>
-            <input type="text" id="author" placeholder="Your name" required style="padding: 8px; width: 150px;">
-            <input type="text" id="content" placeholder="Enter the message" required style="padding: 8px; flex-grow: 1;" autocomplete="off">
-            <button type="submit" style="padding: 8px 15px;">Send!</button>
-            <div style="display: flex; gap: 10px;">
-                <button id="clear-local" type="button" style="padding: 5px 10px; background-color: #6c757d; color: white; border: none; cursor: pointer;">
-                    Clear locally
-                </button>
-                <button id="clear-global" type="button" style="padding: 5px 10px; background-color: #dc3545; color: white; border: none; cursor: pointer;">
-                    Clear globally
-                </button>
-            </div>
-        </form>
-
         <script>
+            let currentConversationId = null;
+            const chatListDiv = document.getElementById('chat-list');
             const messagesDiv = document.getElementById('messages');
             const form = document.getElementById('chat-form');
             const authorInput = document.getElementById('author');
             const contentInput = document.getElementById('content');
+            const currentTitleHeader = document.getElementById('current-chat-title');
             
-            const displayedIds = new Set();
-            let minVisibleId = 0;
+            const renderedMessageIds = new Set();
+
+            async function loadConversations()
+            {
+                const res = await fetch('/conversations');
+                const chats = await res.json();
+                
+                chatListDiv.innerHTML = '';
+                chats.forEach(chat => {
+                    const item = document.createElement('div');
+                    item.className = 'chat-item' + (chat.id === currentConversationId ? 'active' : '');
+
+                    const titleSpan = document.createElement('span');
+                    titleSpan.textContent = chat.title + " ";
+                    titleSpan.onclick = () => selectConversation(chat.id, chat.title);
+                    item.appendChild(titleSpan);
+
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'delete-btn';
+                    deleteBtn.textContent = "❌";
+                    deleteBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        if(confirm('Are you sure to delete this conversation ?'))
+                            deleteConversation(chat.id);
+                    };
+                    
+                    item.appendChild(deleteBtn);
+                    chatListDiv.appendChild(item);
+                });
+            }
+
+            async function selectConversation(id, title)
+            {
+                currentConversationId = id;
+                currentTitleHeader.textContent = title;
+                renderedMessageIds.clear();
+                loadConversations();
+                
+                const res = await fetch(`/conversations/${id}/messages`);
+                const messages = await res.json();
+
+                messagesDiv.innerHTML = '';
+                messages.forEach(msg =>renderMessage(msg));
+            }
+
+            function deleteConversation(conversationId)
+            {
+                fetch(`/conversations/${conversationId}`, {
+                    method: 'DELETE'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if(data.status === 'deleted')
+                    {
+                        console.log('Deleted conversation ID:', data.id);
+                        if(currentConversationId === conversationId)
+                        {
+                            currentConversationId = null;
+                            messagesDiv.innerHTML = '';
+                            currentTitleHeader.textContent = 'Choose the chat';
+                        }
+                        loadConversations();
+                    }
+                });
+            }
+
+            document.getElementById('new-chat-btn').addEventListener('click', async () => {
+                const res = await fetch('/conversations/new', {method: 'POST'});
+                const chat = await res.json();
+
+                authorInput.disabled = false;
+                selectConversation(chat.id, chat.title);
+            });
+
+            function renderMessage(msg)
+            {
+                if(msg.id && renderedMessageIds.has(msg.id))
+                    return;
+                
+                if(msg.id)
+                    renderedMessageIds.add(msg.id);
+
+                const msgDiv = document.createElement('div');
+                msgDiv.className = 'msg';
+                msgDiv.innerHTML = `<span class="msg-time">[${msg.time}]</span> <strong>${msg.author}:</strong> ${msg.content}`;
+                messagesDiv.appendChild(msgDiv);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                if(!currentConversationId)
+                {
+                    alert('Create new chat!');
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('conversation_id', currentConversationId);
+                formData.append('author', authorInput.value);
+                formData.append('content', contentInput.value);
+
+                const res = await fetch('/send', {method: 'POST', body: formData});
+                const data = await res.json();
+
+                if(data.status === 'sent')
+                {
+                    authorInput.disabled = true;
+                    contentInput.value = '';
+
+                    if(data.conversationTitle)
+                        currentTitleHeader.textContent = data.conversationTitle;
+                    loadConversations();
+                }
+            });
 
             const eventSource = new EventSource('/stream');
             eventSource.onmessage = function(event)
             {
                 const data = JSON.parse(event.data);
-                
+
                 if(data.action === 'clear')
                 {
                     messagesDiv.innerHTML = '';
-                    displayedIds.clear();
-                    minVisibleId = 0;
+                    renderedMessageIds.clear();
                     return;
                 }
 
-                if(data.id <= minVisibleId)
-                    return;
-
-                if(displayedIds.has(data.id))
-                    return;
-                displayedIds.add(data.id);
-
-                const msgElement = document.createElement('div');
-                msgElement.style.marginBottom = '10px';
-
-                //XSS
-                const timeSpan = document.createElement('span');
-                timeSpan.style.color = '#888';
-                timeSpan.textContent = `[${data.time}]`;
-
-                const authorStrong = document.createElement('strong');
-                authorStrong.textContent = ` ${data.author}: `;
-
-                const contentText = document.createTextNode(data.content);
-
-                msgElement.appendChild(timeSpan);
-                msgElement.appendChild(authorStrong);
-                msgElement.appendChild(contentText);
-
-                messagesDiv.appendChild(msgElement);
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                if(data.conversation_id === currentConversationId)
+                    renderMessage(data);
             };
 
-            form.addEventListener('submit', function(e)
-            {
-                e.preventDefault();
-
-                const formData = new FormData();
-                formData.append('author', authorInput.value);
-                formData.append('content', contentInput.value);
-
-                fetch('/send',
-                {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                authorInput.disabled = true;
-                contentInput.value = '';
-            });
-
-            document.getElementById('new-chat').addEventListener('click', function() {
-                
-                if(displayedIds.size >0)
-                    minVisibleId = Math.max(...displayedIds);
-                
-                authorInput.disabled = false;
-                authorInput.value = '';
-                authorInput.focus();
-
-                messagesDiv.innerHTML = '';
-                displayedIds.clear();
-            });
-
-            document.getElementById('clear-local').addEventListener('click', function() {
-                if(displayedIds.size > 0)
-                {
-                    minVisibleId = Math.max(...displayedIds);
-                }
-                messagesDiv.innerHTML = '';
-                displayedIds.clear();
-            });
-
-            document.getElementById('clear-global').addEventListener('click', function() {
-                if(confirm('Are you sure to TRUNCATE the table?'))
-                {
-                    fetch('/clear', {method: 'DELETE'})
-                        .then(response => response.json())
-                        .then(data => {
-                            if(data.status === 'ok')
-                            {
-                                messagesDiv.innerHTML = '';
-                                displayedIds.clear();
-                                minVisibleId = 0;
-                            }
-                        });
-                }
-            });
+            loadConversations();
         </script>
     </body>
 </html>

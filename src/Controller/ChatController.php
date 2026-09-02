@@ -2,6 +2,7 @@
 
 namespace App\Controller;
 
+use App\Entity\Conversation;
 use App\Entity\Message;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -19,18 +20,82 @@ class ChatController extends AbstractController
         return $this->render('chat/index.html.twig');
     }
 
+    #[Route('/conversations', name: 'chat_conversations', methods: ['GET'])]
+    public function getConversations(EntityManagerInterface $em): JsonResponse
+    {
+        $conversations = $em->getRepository(Conversation::class)
+            ->findBy([], ['created_at' => 'DESC']);
+        
+        $data = array_map(fn($c) => [
+            'id' => $c->getId(),
+            'title' => $c->getTitle(),
+            'createdAt' => $c->getCreatedAt()->format('Y-m-d H:i')
+        ], $conversations);
+
+        return new JsonResponse($data);
+    }
+
+    #[Route('/conversations/new', name: 'chat_new_conversation', methods: ['POST'])]
+    public function newConversation(EntityManagerInterface $em): JsonResponse
+    {
+        $conversation = new Conversation();
+        $conversation->setTitle('New chat');
+        $conversation->setCreatedAt(new \DateTimeImmutable('now', new \DatetimeZone('Europe/Warsaw')));
+
+        $em->persist($conversation);
+        $em->flush();
+
+        return new JsonResponse([
+            'id' => $conversation->getId(),
+            'title' => $conversation->getTitle()
+        ]);
+    }
+
+    #[Route('/conversations/{id}/messages', name: 'chat_get_messages', methods: ['GET'])]
+    public function getMessages(Conversation $conversation): JsonResponse
+    {
+        $messages = array_map(fn($m) => [
+            'id' => $m->getId(),
+            'author' => $m->getAuthor(),
+            'content' => $m->getContent(),
+            'time' => $m->getCreatedAt()->format('H:i:s')
+        ], $conversation->getMessages()->toArray());
+
+        return new JsonResponse($messages);
+    }
+
+    #[Route('/conversations/{id}', name: 'chat_delete_conversation', methods: ['DELETE'])]
+    public function deleteConversation(conversation $conversation, EntityManagerInterface $em): JsonResponse
+    {
+        $em->remove($conversation);
+        $em->flush();
+
+        return new JsonResponse(['status' => 'deleted', 'id' => $conversation->getId()]);
+    }
+
     #[Route('/send', name: 'chat_send', methods: ['POST'])]
     public function send(Request $request, EntityManagerInterface $em): JsonResponse
     {
+        $conversationId = $request->request->get('conversation_id');
         $author = $request->request->get('author');
         $content = $request->request->get('content');
 
-        if(!$author || !$content)
-        {
+        if(!$conversationId || !$author || !$content)
             return new JsonResponse(['status' => 'error', 'message' => 'No data'], 400);
+
+        $conversation = $em->getRepository(Conversation::class)->find($conversationId);
+        if(!$conversation)
+            return new JsonResponse(['status' => 'error', 'message' => 'No chat found'], 404);
+
+        if($conversation->getMessages()->isEmpty())
+        {
+            $title = mb_substr($content, 0, 30);
+            if(mb_strlen($content) > 30) $title .= '...';
+            $conversation->setTitle($title);
         }
 
         $message = new Message();
+        $message->setConversation($conversation);
         $message->setAuthor($author);
         $message->setContent($content);
         $message->setCreatedAt(new \DateTimeImmutable('now', new \DateTimeZone('Europe/Warsaw')));
@@ -38,7 +103,7 @@ class ChatController extends AbstractController
         $em->persist($message);
         $em->flush();
 
-        return new JsonResponse(['status' => 'sent']);
+        return new JsonResponse(['status' => 'sent', 'conversationTitle' => $conversation->getTitle()]);
     }
 
     #[Route('/stream', name: 'chat_stream')]
@@ -88,7 +153,8 @@ class ChatController extends AbstractController
                         'id' => $msg->getId(),
                         'author' => $msg->getAuthor(),
                         'content' => $msg->getContent(),
-                        'time' => $msg->getCreatedAt()->format('H:i:s')
+                        'time' => $msg->getCreatedAt()->format('H:i:s'),
+                        'conversation_id' => $msg->getConversation() ? $msg->getConversation()->getId() : null
                     ]);
 
                     echo "data: {$data}\n\n";
@@ -124,4 +190,5 @@ class ChatController extends AbstractController
 
         return new JsonResponse(['status' => 'ok']);
     }
+
 }
